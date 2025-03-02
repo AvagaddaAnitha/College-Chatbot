@@ -42,7 +42,7 @@ embedder = SentenceTransformer('all-MiniLM-L6-v2')  # Embedding model
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv('svcew_details.csv')
+        df = pd.read_csv('college FAQ's.csv')
         df['context'] = df.apply(
             lambda row: f"Question: {row['Question']}\nAnswer: {row['Answer']}", 
             axis=1
