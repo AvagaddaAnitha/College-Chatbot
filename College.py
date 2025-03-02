@@ -1,92 +1,85 @@
 import streamlit as st
 import pandas as pd
-import google.generativeai as genai
-from sentence_transformers import SentenceTransformer
-import faiss
 import numpy as np
 import os
 import glob
+import faiss
+import google.generativeai as genai
+from sentence_transformers import SentenceTransformer
 
-# Custom CSS for styling
-st.markdown("""
-<style>
-    .stApp {
-        background: #f8f5e6;
-        background-image: radial-gradient(#d4d0c4 1px, transparent 1px);
-        background-size: 20px 20px;
-    }
-    .college-font {
-        font-family: 'Times New Roman', serif;
-        color: #2c5f2d;
-    }
-    .user-msg {
-        background: #ffffff !important;
-        border-radius: 15px !important;
-        border: 2px solid #2c5f2d !important;
-    }
-    .bot-msg {
-        background: #fff9e6 !important;
-        border-radius: 15px !important;
-        border: 2px solid #ffd700 !important;
-    }
-    .stChatInput {
-        background: #ffffff;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Configure Gemini AI Model
+# Configure models
 genai.configure(api_key="AIzaSyChdnIsx6-c36f1tU2P2BYqkrqBccTyhBE")
 gemini = genai.GenerativeModel('gemini-1.5-flash')
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
-# Load Embedding Model
-embedder = SentenceTransformer('all-MiniLM-L6-v2')  # Efficient embedding model
+# Store numerical and alphanumeric data separately
+numerical_data = {}
+alphanumeric_data = {}
 
-# Function to load multiple datasets dynamically
+# Function to load and process multiple datasets
 @st.cache_data
 def load_all_data():
+    global numerical_data, alphanumeric_data
     try:
-        # Find all CSV files in 'datasets/' folder
         dataset_files = glob.glob(os.path.join("Final Mini Project", "*.csv"))
-        
-        # Combine all datasets
+        if not dataset_files:
+            st.warning("No datasets found in the 'datasets/' folder.")
+            return None, None
+
         all_data = []
+        
         for file in dataset_files:
             df = pd.read_csv(file)
-            df['context'] = df.apply(lambda row: f"Question: {row['Question']}\nAnswer: {row['Answer']}", axis=1)
-            all_data.append(df)
+            
+            if 'Question' in df.columns and 'Answer' in df.columns:
+                # Handle Question-Answer datasets
+                df['context'] = df.apply(lambda row: f"Question: {row['Question']}\nAnswer: {row['Answer']}", axis=1)
+                all_data.append(df)
+            else:
+                # Handle Numerical or Alphanumeric datasets
+                if df.select_dtypes(include=[np.number]).shape[1] > 0:
+                    numerical_data[file] = df
+                else:
+                    alphanumeric_data[file] = df
         
-        # Merge all datasets
-        df_combined = pd.concat(all_data, ignore_index=True)
-        
-        # Generate embeddings and create FAISS index
-        embeddings = embedder.encode(df_combined['context'].tolist(), convert_to_tensor=True)
-        index = faiss.IndexFlatL2(embeddings.shape[1])
-        index.add(np.array(embeddings.cpu()).astype('float32'))
-        
-        return df_combined, index
+        # If no FAQ datasets found, avoid concatenation error
+        if all_data:
+            df_combined = pd.concat(all_data, ignore_index=True)
+            embeddings = embedder.encode(df_combined['context'].tolist(), convert_to_tensor=True)
+            index = faiss.IndexFlatL2(embeddings.shape[1])
+            index.add(np.array(embeddings.cpu()).astype('float32'))
+            return df_combined, index
+        else:
+            st.warning("No FAQ datasets found (with 'Question' and 'Answer' columns).")
+            return None, None
+
     except Exception as e:
         st.error(f"Failed to load data. Error: {e}")
-        st.stop()
+        return None, None
 
-# Load all datasets
 df, faiss_index = load_all_data()
 
-# App Header
-st.markdown('<h1 class="college-font">🏫 Welcome to SVECW!!!</h1>', unsafe_allow_html=True)
-st.markdown('<h3 class="college-font">Your Guide to Our College Information</h3>', unsafe_allow_html=True)
-st.markdown("---")
+# Function to search in FAISS for FAQs
+def find_closest_question(query):
+    if faiss_index is None or df is None:
+        return []
+    query_embedding = embedder.encode([query])
+    _, I = faiss_index.search(query_embedding.astype('float32'), k=3)
+    return [df.iloc[i]['context'] for i in I[0]]
 
-# Function to find the closest matching question using FAISS
-def find_closest_question(query, faiss_index, df):
-    query_embedding = embedder.encode([query], convert_to_tensor=True)
-    _, I = faiss_index.search(query_embedding.cpu().numpy().astype('float32'), k=5)  # Top 5 matches
-    contexts = [df.iloc[i]['context'] for i in I[0]]
-    return contexts
+# Function to retrieve numerical or alphanumeric data
+def find_structured_data(query):
+    for filename, data in numerical_data.items():
+        if query in data.columns:
+            return f"**{query} Data from {filename}**:\n{data[query].to_string(index=False)}"
+    for filename, data in alphanumeric_data.items():
+        if query in data.columns:
+            return f"**{query} Information from {filename}**:\n{data[query].to_string(index=False)}"
+    return None
 
-# Function to generate a response using Gemini AI
+# Function to generate response using Gemini
 def generate_response(query, contexts):
-    prompt = f"""You are a helpful chatbot for SVCEW College. Answer the following question using the provided context:
+    prompt = f"""You are a chatbot for SVCEW College. Answer the following question using the provided context:
     Question: {query}
     Contexts: {contexts}
     - Provide a detailed and accurate answer.
@@ -95,7 +88,7 @@ def generate_response(query, contexts):
     response = gemini.generate_content(prompt)
     return response.text
 
-# Chat Interface
+# Streamlit Chat Interface
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -106,16 +99,20 @@ for message in st.session_state.messages:
 if prompt := st.chat_input("Ask anything about SVCEW College..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     
-    with st.spinner("Finding the best answer..."):
+    with st.spinner("Searching..."):
         try:
-            # Find closest matching questions using FAISS
-            contexts = find_closest_question(prompt, faiss_index, df)
+            structured_data_response = find_structured_data(prompt)
             
-            # Generate a response using Gemini
-            response = generate_response(prompt, contexts)
-            response = f"**College Information**:\n{response}"
+            if structured_data_response:
+                response = structured_data_response
+            else:
+                # Find closest matching questions using FAISS
+                contexts = find_closest_question(prompt)
+                # Generate a response using Gemini
+                response = generate_response(prompt, contexts) if contexts else "I'm not sure. Can you clarify?"
+                response = f"**College Information**:\n{response}"
         except Exception as e:
             response = f"Sorry, I couldn't generate a response. Error: {e}"
-    
+
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.rerun()
