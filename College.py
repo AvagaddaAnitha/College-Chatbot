@@ -4,6 +4,7 @@ import google.generativeai as genai
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
+import chardet  # Library for detecting file encoding
 
 # Custom CSS for styling
 st.markdown("""
@@ -38,7 +39,7 @@ genai.configure(api_key="AIzaSyChdnIsx6-c36f1tU2P2BYqkrqBccTyhBE")
 gemini = genai.GenerativeModel('gemini-1.5-flash')
 embedder = SentenceTransformer('all-MiniLM-L6-v2')  # Embedding model
 
-# File names
+# File names (without paths)
 DATASET_FILES = [
     "college_FAQs.csv",
     "clubs.csv",
@@ -55,7 +56,13 @@ def load_data():
     try:
         dfs = []
         for file in DATASET_FILES:
-            df = pd.read_csv(file)  # Adjust this if any dataset is in Excel format
+            # Detect file encoding
+            with open(file, 'rb') as f:
+                result = chardet.detect(f.read(100000))  # Read first 100KB for detection
+            
+            detected_encoding = result['encoding'] if result['encoding'] else 'ISO-8859-1'
+
+            df = pd.read_csv(file, encoding=detected_encoding, errors="replace")  # Handle encoding issues
             df['context'] = df.apply(lambda row: " ".join(row.astype(str)), axis=1)
             dfs.append(df)
         
@@ -84,7 +91,7 @@ def find_closest_question(query, faiss_index, df):
 
 # Function to generate a response using Gemini
 def generate_response(query, contexts):
-    prompt = f"""You are a helpful and knowledgeable chatbot for SVCEW College. Answer the following question using the provided context:
+    prompt = f"""You are a helpful and knowledgeable chatbot for SVECW College. Answer the following question using the provided context:
     Question: {query}
     Contexts: {contexts}
     - Provide a detailed and accurate answer.
@@ -102,7 +109,7 @@ for message in st.session_state.messages:
                         avatar="🙋‍♀️" if message["role"] == "user" else "🏫"):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Ask anything about SVCEW College..."):
+if prompt := st.chat_input("Ask anything about SVECW College..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     
     with st.spinner("Finding the best answer..."):
