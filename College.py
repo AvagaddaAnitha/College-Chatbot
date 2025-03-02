@@ -4,7 +4,6 @@ import google.generativeai as genai
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-import chardet  # Library for detecting file encoding
 
 # Custom CSS for styling
 st.markdown("""
@@ -35,52 +34,61 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Configure models
-genai.configure(api_key="AIzaSyChdnIsx6-c36f1tU2P2BYqkrqBccTyhBE")
+genai.configure(api_key="AIzaSyBsq5Kd5nJgx2fejR77NT8v5Lk3PK4gbH8")
 gemini = genai.GenerativeModel('gemini-1.5-flash')
 embedder = SentenceTransformer('all-MiniLM-L6-v2')  # Embedding model
 
-# File names (without paths)
-DATASET_FILES = [
-    "college_FAQs.csv",
-    "clubs.csv",
-    "Companies.csv",
-    "EAMCET_Cutoff_SVECW.csv",
-    "Faculty.csv",
-    "Hostels.csv",
-    "Sorted_Publications_2020_2025.csv"
-]
-
-# Load data and create FAISS index
+# Load multiple datasets and create FAISS indices
 @st.cache_data
 def load_data():
-    try:
-        dfs = []
-        for file in DATASET_FILES:
-            # Detect file encoding
-            with open(file, 'rb') as f:
-                result = chardet.detect(f.read(100000))  # Read first 100KB for detection
+    datasets = {
+        "SVCEW": 'svcew_details.csv',
+        "Dataset2": 'dataset2.csv',  # Add other dataset file names here
+        "Dataset3": 'dataset3.csv',
+        "Dataset4": 'dataset4.csv',
+        "Dataset5": 'dataset5.csv',
+        "Dataset6": 'dataset6.csv',
+        "Dataset7": 'dataset7.csv',
+    }
+    
+    data_dict = {}
+    index_dict = {}
+    
+    for name, file in datasets.items():
+        try:
+            df = pd.read_csv(file)
             
-            detected_encoding = result['encoding'] if result['encoding'] else 'ISO-8859-1'
+            # Handle datasets with different structures
+            if 'Question' in df.columns and 'Answer' in df.columns:
+                # If the dataset has 'Question' and 'Answer' columns
+                df['context'] = df.apply(
+                    lambda row: f"Question: {row['Question']}\nAnswer: {row['Answer']}", 
+                    axis=1
+                )
+            else:
+                # If the dataset has a different structure, use the first column as context
+                df['context'] = df[df.columns[0]].astype(str)  # Use the first column as context
+            
+            embeddings = embedder.encode(df['context'].tolist())
+            index = faiss.IndexFlatL2(embeddings.shape[1])  # FAISS index for similarity search
+            index.add(np.array(embeddings).astype('float32'))
+            
+            data_dict[name] = df
+            index_dict[name] = index
+        except Exception as e:
+            st.error(f"Failed to load dataset {name}. Error: {e}")
+    
+    return data_dict, index_dict
 
-            df = pd.read_csv(file, encoding=detected_encoding, errors="replace")  # Handle encoding issues
-            df['context'] = df.apply(lambda row: " ".join(row.astype(str)), axis=1)
-            dfs.append(df)
-        
-        combined_df = pd.concat(dfs, ignore_index=True)
-        embeddings = embedder.encode(combined_df['context'].tolist())
-        index = faiss.IndexFlatL2(embeddings.shape[1])  # FAISS index for similarity search
-        index.add(np.array(embeddings).astype('float32'))
-        return combined_df, index
-    except Exception as e:
-        st.error(f"Failed to load data. Error: {e}")
-        st.stop()
-
-df, faiss_index = load_data()
+data_dict, index_dict = load_data()
 
 # App Header
-st.markdown('<h1 class="college-font">🏫 Welcome to SVECW!!!</h1>', unsafe_allow_html=True)
-st.markdown('<h3 class="college-font">Your Guide to Our College Information</h3>', unsafe_allow_html=True)
+st.markdown('<h1 class="college-font">🏫 Multi-Dataset Chatbot</h1>', unsafe_allow_html=True)
+st.markdown('<h3 class="college-font">Your Guide to Multiple Datasets</h3>', unsafe_allow_html=True)
 st.markdown("---")
+
+# Dataset selection dropdown
+selected_dataset = st.selectbox("Select a dataset", list(data_dict.keys()))
 
 # Function to find the closest matching question using FAISS
 def find_closest_question(query, faiss_index, df):
@@ -91,7 +99,7 @@ def find_closest_question(query, faiss_index, df):
 
 # Function to generate a response using Gemini
 def generate_response(query, contexts):
-    prompt = f"""You are a helpful and knowledgeable chatbot for SVECW College. Answer the following question using the provided context:
+    prompt = f"""You are a helpful and knowledgeable chatbot. Answer the following question using the provided context:
     Question: {query}
     Contexts: {contexts}
     - Provide a detailed and accurate answer.
@@ -106,20 +114,24 @@ if "messages" not in st.session_state:
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"], 
-                        avatar="🙋‍♀️" if message["role"] == "user" else "🏫"):
+                        avatar="🙋" if message["role"] == "user" else "🏫"):
         st.markdown(message["content"])
 
-if prompt := st.chat_input("Ask anything about SVECW College..."):
+if prompt := st.chat_input("Ask anything..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     
     with st.spinner("Finding the best answer..."):
         try:
+            # Get the selected dataset and FAISS index
+            df = data_dict[selected_dataset]
+            faiss_index = index_dict[selected_dataset]
+            
             # Find closest matching questions using FAISS
             contexts = find_closest_question(prompt, faiss_index, df)
             
             # Generate a response using Gemini
             response = generate_response(prompt, contexts)
-            response = f"**College Information**:\n{response}"
+            response = f"**{selected_dataset} Information**:\n{response}"
         except Exception as e:
             response = f"Sorry, I couldn't generate a response. Error: {e}"
     
