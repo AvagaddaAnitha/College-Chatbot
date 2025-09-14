@@ -1,6 +1,6 @@
-faiss-cpu==1.12.0       # or latest available
-scikit-learn==1.7.2     # latest compatible
-numpy==1.27.5           # latest compatible
+faiss-cpu==1.12.0
+scikit-learn==1.7.2
+numpy==2.3.3
 sentence-transformers==2.2.2
 pandas==2.2.3
 streamlit==1.32.0
