@@ -38,7 +38,7 @@ st.markdown("""
 # -----------------------------
 # 🔑 Configure Gemini API (securely with secrets)
 # -----------------------------
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+genai.configure(api_key=st.secrets["AIzaSyB5MZ_sayQOjtiAePW_g6SPOLCS3Xpz3EY"])
 gemini = genai.GenerativeModel("gemini-1.5-flash")
 
 # -----------------------------
