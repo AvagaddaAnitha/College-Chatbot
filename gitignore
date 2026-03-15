@@ -1,0 +1,36 @@
+# =============================================================
+# .gitignore
+# Files listed here will NEVER be uploaded to GitHub.
+# This protects your API key and avoids uploading large files.
+# =============================================================
+
+# ── API keys — NEVER upload these ────────────────────────────
+.env
+*.env
+secrets.toml
+
+# ── FAISS indexes (large binary files, auto-generated) ───────
+# These rebuild automatically on first run, no need to upload
+faiss_index/
+
+# ── Python cache files ────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environment ───────────────────────────────────────
+venv/
+env/
+.venv/
+
+# ── OS files ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Jupyter notebooks (if any) ───────────────────────────────
+.ipynb_checkpoints/
+
+# ── Streamlit local cache ─────────────────────────────────────
+.streamlit/secrets.toml
