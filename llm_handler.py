@@ -1,64 +1,85 @@
-# llm_handler.py — uses the NEW google-genai SDK (not deprecated google-generativeai)
+# llm_handler.py
+# Uses direct HTTP requests to call Gemini API.
+# No library dependency — works regardless of what is installed.
 
 import os
-from google import genai
+import json
+import urllib.request
+import urllib.error
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 COLLEGE_NAME   = "SVECW (Shri Vishnu Engineering College for Women)"
 
+# These are the current working Gemini model names (2025-2026)
+MODELS_TO_TRY = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+]
+
 
 def generate_answer(question: str, context: str) -> str:
     """
-    Called by app.py — sends question + CSV context to Gemini.
-    Returns a specific, focused answer (not raw data).
+    Main function called by app.py.
+    Sends question + context to Gemini via direct HTTP.
+    Returns a clean, specific answer.
     """
+
+    if not GOOGLE_API_KEY:
+        return _fallback(
+            context,
+            "API key not set. Go to Streamlit Cloud → your app → "
+            "Manage app → Settings → Secrets → add: GOOGLE_API_KEY = 'your-key'"
+        )
 
     prompt = f"""You are a helpful college assistant for {COLLEGE_NAME}.
 
-A student asked: "{question}"
+Student asked: "{question}"
 
-Relevant data from the college database:
+College database data:
 {context}
 
-Instructions:
-- Answer ONLY what the student specifically asked.
-- If they asked about ONE branch (like CSE), give ONLY that branch's data.
-- If they asked about ONE year, give ONLY that year's data.
-- If they asked about companies starting with a letter, list ONLY those companies.
-- Write in friendly, simple language in 2 to 5 sentences.
-- Do NOT paste raw data lines. Convert them into a readable answer.
-- If the exact info is not in the data, say: "I don't have that specific
-  information. Please contact the college office directly."
+Rules:
+- Answer ONLY what was asked. Be specific.
+- If asked about CSE branch only, give only CSE data.
+- If asked about companies starting with a letter, list only those.
+- Write 2 to 4 clear sentences. No raw data copying.
+- If info not available, say: "Please contact the college office."
 """
 
-    if not GOOGLE_API_KEY:
-        return _fallback(context, "API key not set. Go to Streamlit Cloud → Settings → Secrets and add GOOGLE_API_KEY.")
+    payload = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}]
+    }).encode("utf-8")
 
-    try:
-        # New google-genai SDK (replaces deprecated google-generativeai)
-        client   = genai.Client(api_key=GOOGLE_API_KEY)
-        response = client.models.generate_content(
-            model    = "gemini-2.0-flash",
-            contents = prompt,
+    for model in MODELS_TO_TRY:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={GOOGLE_API_KEY}"
         )
-        return response.text
-
-    except Exception as e:
-        err = str(e)
-        # Try fallback model if first one fails
+        req = urllib.request.Request(
+            url,
+            data    = payload,
+            headers = {"Content-Type": "application/json"},
+            method  = "POST",
+        )
         try:
-            client   = genai.Client(api_key=GOOGLE_API_KEY)
-            response = client.models.generate_content(
-                model    = "gemini-1.5-flash",
-                contents = prompt,
-            )
-            return response.text
-        except Exception as e2:
-            return _fallback(context, str(e2))
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data   = json.loads(resp.read().decode("utf-8"))
+                answer = data["candidates"][0]["content"]["parts"][0]["text"]
+                return answer.strip()
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore")
+            if e.code == 404:
+                continue   # model not found — try next one
+            return _fallback(context, f"HTTP {e.code}: {body[:200]}")
+        except Exception as e:
+            return _fallback(context, str(e)[:200])
+
+    return _fallback(context, "No working Gemini model found. Check your API key.")
 
 
 def _fallback(context: str, error: str) -> str:
-    """Show raw data when AI is unavailable — better than crashing."""
     return (
         f"⚠️ AI unavailable: {error}\n\n"
         f"**Raw data found:**\n\n{context}\n\n"
@@ -66,5 +87,5 @@ def _fallback(context: str, error: str) -> str:
     )
 
 
-# Keep alias just in case
+# Alias
 get_ai_response = generate_answer
