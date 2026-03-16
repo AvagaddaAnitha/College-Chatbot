@@ -83,5 +83,6 @@ DATASET_KEYWORDS = {
 }
 
 # ── Page config ───────────────────────────────────────────────
+COLLEGE_NAME = "SVECW (Shri Vishnu Engineering College for Women)"
 PAGE_TITLE = "SVECW College Chatbot"
 PAGE_ICON  = "🎓"
