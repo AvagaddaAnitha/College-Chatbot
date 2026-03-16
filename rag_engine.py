@@ -172,15 +172,29 @@ def build_or_load_index(dataset_key: str, embedder: SentenceTransformer):
         return None, []
 
     # Load CSV or Excel
+    # try:
+    #     if filepath.endswith(".xlsx"):
+    #         df = pd.read_excel(filepath, engine="openpyxl")
+    #     else:
+    #         df = pd.read_csv(filepath, encoding="utf-8", on_bad_lines="skip")
+    # except Exception as e:
+    #     st.error(f"❌ Could not read {filename}: {e}")
+    #     return None, []
+
     try:
         if filepath.endswith(".xlsx"):
             df = pd.read_excel(filepath, engine="openpyxl")
         else:
-            df = pd.read_csv(filepath, encoding="utf-8", on_bad_lines="skip")
+            try:
+                df = pd.read_csv(filepath, encoding="utf-8", on_bad_lines="skip")
+            except UnicodeDecodeError:
+                df = pd.read_csv(filepath, encoding="latin-1", on_bad_lines="skip")
     except Exception as e:
         st.error(f"❌ Could not read {filename}: {e}")
         return None, []
 
+
+    
     # Build context string for every row
     contexts = []
     for _, row in df.iterrows():
