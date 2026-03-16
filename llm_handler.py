@@ -73,3 +73,5 @@ def _fallback(contexts: list[str], error: str) -> str:
         f"**Here is the raw data I found:**\n\n{context_block}\n\n"
         f"*Please contact the college office for more help.*"
     )
+# Alias so app.py can import either name
+generate_answer = get_ai_response
