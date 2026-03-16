@@ -5,12 +5,11 @@
 # Run locally with:  pip install -r requirements.txt
 # =============================================================
 
-
-streamlit==1.32.0
-pandas==2.2.3
-numpy==1.26.4
+streamlit
+pandas
+numpy
 faiss-cpu
-sentence-transformers==2.2.2
-google-generativeai==0.3.2
-openpyxl==3.1.2
-python-dotenv==1.0.1
+sentence-transformers
+google-generativeai
+openpyxl
+python-dotenv
