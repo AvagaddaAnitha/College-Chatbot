@@ -7,6 +7,15 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 GOOGLE_API_KEY     = os.getenv("GOOGLE_API_KEY", "")
 COLLEGE_NAME       = "SVECW (Shri Vishnu Engineering College for Women)"
 
+# Current working free models on OpenRouter (March 2026)
+OPENROUTER_MODELS = [
+    "meta-llama/llama-3.2-3b-instruct:free",
+    "meta-llama/llama-3.1-70b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+    "google/gemma-2-9b-it:free",
+    "qwen/qwen-2-7b-instruct:free",
+]
+
 
 def _build_prompt(question, context):
     return (
@@ -15,7 +24,7 @@ def _build_prompt(question, context):
         "College database data:\n" + context + "\n\n"
         "Rules:\n"
         "- Answer ONLY what was specifically asked.\n"
-        "- If asked about HOD or head of department, give only that person name and department.\n"
+        "- If asked about HOD or head of department, give only that person name.\n"
         "- If asked about ONE branch like CSE, give ONLY that branch data.\n"
         "- If asked about companies starting with a letter, list ONLY those.\n"
         "- Write 2 to 5 clear friendly sentences.\n"
@@ -26,27 +35,38 @@ def _build_prompt(question, context):
 
 def _call_openrouter(prompt):
     url = "https://openrouter.ai/api/v1/chat/completions"
-    payload = json.dumps({
-        "model": "meta-llama/llama-3.1-8b-instruct:free",
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 512,
-        "temperature": 0.3,
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + OPENROUTER_API_KEY,
-            "HTTP-Referer": "https://college-chatbot.streamlit.app",
-            "X-Title": "SVECW College Chatbot",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        return data["choices"][0]["message"]["content"].strip()
+    for model in OPENROUTER_MODELS:
+        payload = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 512,
+            "temperature": 0.3,
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + OPENROUTER_API_KEY,
+                "HTTP-Referer": "https://college-chatbot.streamlit.app",
+                "X-Title": "SVECW College Chatbot",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                answer = data["choices"][0]["message"]["content"].strip()
+                if answer:
+                    return answer
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                continue
+            body = e.read().decode("utf-8", errors="ignore")
+            raise Exception("OpenRouter HTTP " + str(e.code) + ": " + body[:200])
+        except Exception as e:
+            raise
+    raise Exception("No working OpenRouter model found.")
 
 
 def _call_gemini(prompt):
@@ -84,11 +104,8 @@ def generate_answer(question, context):
     if OPENROUTER_API_KEY:
         try:
             return _call_openrouter(prompt)
-        except urllib.error.HTTPError as e:
-            body = e.read().decode("utf-8", errors="ignore")
-            openrouter_error = "OpenRouter HTTP " + str(e.code) + ": " + body[:150]
         except Exception as e:
-            openrouter_error = "OpenRouter error: " + str(e)[:150]
+            openrouter_error = str(e)[:200]
     else:
         openrouter_error = "OPENROUTER_API_KEY not set in Streamlit Secrets"
 
