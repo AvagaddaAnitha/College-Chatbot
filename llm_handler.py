@@ -3,9 +3,9 @@ import json
 import urllib.request
 import urllib.error
 
-GROQ_API_KEY   = os.getenv("GROQ_API_KEY", "")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-COLLEGE_NAME   = "SVECW (Shri Vishnu Engineering College for Women)"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+GOOGLE_API_KEY     = os.getenv("GOOGLE_API_KEY", "")
+COLLEGE_NAME       = "SVECW (Shri Vishnu Engineering College for Women)"
 
 
 def _build_prompt(question, context):
@@ -15,6 +15,7 @@ def _build_prompt(question, context):
         "College database data:\n" + context + "\n\n"
         "Rules:\n"
         "- Answer ONLY what was specifically asked.\n"
+        "- If asked about HOD or head of department, give only that person name and department.\n"
         "- If asked about ONE branch like CSE, give ONLY that branch data.\n"
         "- If asked about companies starting with a letter, list ONLY those.\n"
         "- Write 2 to 5 clear friendly sentences.\n"
@@ -23,10 +24,10 @@ def _build_prompt(question, context):
     )
 
 
-def _call_groq(prompt):
-    url = "https://api.groq.com/openai/v1/chat/completions"
+def _call_openrouter(prompt):
+    url = "https://openrouter.ai/api/v1/chat/completions"
     payload = json.dumps({
-        "model": "llama3-8b-8192",
+        "model": "meta-llama/llama-3.1-8b-instruct:free",
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 512,
         "temperature": 0.3,
@@ -37,7 +38,9 @@ def _call_groq(prompt):
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + GROQ_API_KEY,
+            "Authorization": "Bearer " + OPENROUTER_API_KEY,
+            "HTTP-Referer": "https://college-chatbot.streamlit.app",
+            "X-Title": "SVECW College Chatbot",
         },
         method="POST",
     )
@@ -56,7 +59,6 @@ def _call_gemini(prompt):
         payload = json.dumps({
             "contents": [{"parts": [{"text": prompt}]}]
         }).encode("utf-8")
-
         req = urllib.request.Request(
             url,
             data=payload,
@@ -76,19 +78,19 @@ def _call_gemini(prompt):
 
 def generate_answer(question, context):
     prompt = _build_prompt(question, context)
-    groq_error = ""
+    openrouter_error = ""
     gemini_error = ""
 
-    if GROQ_API_KEY:
+    if OPENROUTER_API_KEY:
         try:
-            return _call_groq(prompt)
+            return _call_openrouter(prompt)
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="ignore")
-            groq_error = "Groq HTTP " + str(e.code) + ": " + body[:150]
+            openrouter_error = "OpenRouter HTTP " + str(e.code) + ": " + body[:150]
         except Exception as e:
-            groq_error = "Groq error: " + str(e)[:150]
+            openrouter_error = "OpenRouter error: " + str(e)[:150]
     else:
-        groq_error = "GROQ_API_KEY not set in Streamlit Secrets"
+        openrouter_error = "OPENROUTER_API_KEY not set in Streamlit Secrets"
 
     if GOOGLE_API_KEY:
         try:
@@ -101,7 +103,7 @@ def generate_answer(question, context):
     else:
         gemini_error = "GOOGLE_API_KEY not set"
 
-    return _fallback(context, groq_error + " | " + gemini_error)
+    return _fallback(context, openrouter_error + " | " + gemini_error)
 
 
 def _fallback(context, error):
